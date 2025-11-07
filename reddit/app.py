@@ -1,4 +1,4 @@
-from flask import Flask, render_template, request, send_file, flash, redirect, url_for
+from flask import Flask, render_template, request, send_file, flash, redirect, url_for, jsonify
 import pandas as pd
 import praw
 from datetime import datetime
@@ -7,64 +7,55 @@ import threading
 from io import BytesIO
 import google.generativeai as genai
 import time
-from dotenv import load_dotenv
-
-# Load environment variables
-load_dotenv()
 
 app = Flask(__name__)
-app.secret_key = os.getenv('FLASK_SECRET_KEY', 'fallback-secret-key')
+app.secret_key = os.environ.get('FLASK_SECRET_KEY', 'fallback-secret-key')
 
 # ---------------- Configuration ----------------
-REDDIT_CLIENT_ID = os.getenv('REDDIT_CLIENT_ID')
-REDDIT_SECRET = os.getenv('REDDIT_SECRET')
-REDDIT_USER_AGENT = os.getenv('REDDIT_USER_AGENT', 'RedditKeywordSearchBot/1.0')
-GEMINI_API_KEY = os.getenv('GEMINI_API_KEY')
+REDDIT_CLIENT_ID = os.environ.get('REDDIT_CLIENT_ID')
+REDDIT_SECRET = os.environ.get('REDDIT_SECRET')
+REDDIT_USER_AGENT = os.environ.get('REDDIT_USER_AGENT', 'RedditKeywordSearchBot/1.0')
+GEMINI_API_KEY = os.environ.get('GEMINI_API_KEY')
 
-print("🔧 Checking environment variables...")
-print(f"Reddit Client ID: {'✅ Set' if REDDIT_CLIENT_ID else '❌ Missing'}")
-print(f"Reddit Secret: {'✅ Set' if REDDIT_SECRET else '❌ Missing'}")
-print(f"Gemini API Key: {'✅ Set' if GEMINI_API_KEY else '❌ Missing'}")
+print("🚀 Starting Flask app on Vercel...")
+print("📁 Current directory:", os.getcwd())
+print("📁 Files in directory:", os.listdir('.'))
+print("📁 Templates exists:", os.path.exists('templates'))
+print("📁 Static exists:", os.path.exists('static'))
 
-# Validate required environment variables
-if not all([REDDIT_CLIENT_ID, REDDIT_SECRET, GEMINI_API_KEY]):
-    raise ValueError("Missing required environment variables")
+# Initialize variables
+reddit = None
+gemini_configured = False
+
+# Don't validate environment variables on startup - let it fail gracefully
+try:
+    if GEMINI_API_KEY:
+        genai.configure(api_key=GEMINI_API_KEY)
+        gemini_configured = True
+        print("✅ Gemini AI configured successfully")
+    else:
+        print("⚠️ Gemini API Key not set")
+except Exception as e:
+    print(f"⚠️ Gemini configuration failed: {e}")
 
 try:
-    genai.configure(api_key=GEMINI_API_KEY)
-    print("✅ Gemini AI configured successfully")
-    
-    # List available models to debug
-    try:
-        models = genai.list_models()
-        print("📋 Available Gemini models:")
-        for model in models:
-            print(f"  - {model.name}")
-    except Exception as e:
-        print(f"⚠️ Could not list models: {e}")
-        
+    if REDDIT_CLIENT_ID and REDDIT_SECRET:
+        reddit = praw.Reddit(
+            client_id=REDDIT_CLIENT_ID,
+            client_secret=REDDIT_SECRET,
+            user_agent=REDDIT_USER_AGENT
+        )
+        print("✅ Reddit authentication successful")
+    else:
+        print("⚠️ Reddit credentials not set")
 except Exception as e:
-    print(f"❌ Gemini configuration failed: {e}")
-
-try:
-    reddit = praw.Reddit(
-        client_id=REDDIT_CLIENT_ID,
-        client_secret=REDDIT_SECRET,
-        user_agent=REDDIT_USER_AGENT
-    )
-    # Test Reddit connection
-    print("🔍 Testing Reddit connection...")
-    test_subreddit = reddit.subreddit("all")
-    print("✅ Reddit authentication successful")
-except Exception as e:
-    print(f"❌ Reddit authentication failed: {e}")
-    reddit = None
+    print(f"⚠️ Reddit authentication failed: {e}")
 
 # Global variable to store search progress and configuration
 search_config = {
     'service_description': '',
     'posts_per_keyword': 10,
-    'relevance_threshold': 0.3  # Lowered threshold for testing
+    'relevance_threshold': 0.3
 }
 
 search_progress = {
@@ -78,15 +69,15 @@ search_progress = {
 
 def get_gemini_model():
     """Get available Gemini model"""
+    if not gemini_configured:
+        raise Exception("Gemini AI not configured")
+    
     try:
-        # Try the new model name first
         return genai.GenerativeModel('gemini-1.5-pro-latest')
     except:
         try:
-            # Fallback to older model name
             return genai.GenerativeModel('gemini-pro')
         except:
-            # Last resort - try any available model
             models = genai.list_models()
             for model in models:
                 if 'generateContent' in model.supported_generation_methods:
@@ -94,10 +85,11 @@ def get_gemini_model():
             raise Exception("No suitable Gemini model found")
 
 def analyze_post_relevance(service_description, post_title, post_content=""):
-    """
-    Use Gemini AI to analyze if a post is suitable for marketing the service
-    """
+    """Use Gemini AI to analyze if a post is suitable for marketing the service"""
     try:
+        if not gemini_configured:
+            return True, 0.7, "AI analysis not available", "Consider engaging with helpful information"
+            
         model = get_gemini_model()
         
         prompt = f"""
@@ -124,12 +116,11 @@ def analyze_post_relevance(service_description, post_title, post_content=""):
         
         response = model.generate_content(prompt)
         response_text = response.text
-        print(f"🔍 Raw Gemini Response: {response_text}")
         
         # Parse the response
         lines = response_text.strip().split('\n')
         relevant = "NO"
-        confidence = 0.5  # Default medium confidence
+        confidence = 0.5
         reason = "Potential marketing opportunity found"
         marketing_suggestion = "Offer helpful information about your service"
         
@@ -151,16 +142,20 @@ def analyze_post_relevance(service_description, post_title, post_content=""):
             elif line.startswith('SUGGESTION:'):
                 marketing_suggestion = line.split(':', 1)[1].strip()
         
-        print(f"📊 Analysis Result: Relevant={relevant}, Confidence={confidence}")
         return relevant == "YES", confidence, reason, marketing_suggestion
         
     except Exception as e:
-        print(f"❌ Gemini analysis error: {e}")
-        # Return True with medium confidence to not block results during testing
-        return True, 0.5, f"Analysis skipped - potential opportunity", "Consider engaging with helpful information about your service"
+        print(f"⚠️ Gemini analysis error: {e}")
+        return True, 0.5, f"Analysis skipped - potential opportunity", "Consider engaging with helpful information"
 
 def search_reddit(keywords, service_description, posts_per_keyword, relevance_threshold=0.3):
     global search_progress
+    
+    if reddit is None:
+        search_progress['error'] = "Reddit API not configured. Please check environment variables."
+        search_progress['is_running'] = False
+        return None
+        
     results = []
     total_keywords = len(keywords)
     
@@ -178,15 +173,12 @@ def search_reddit(keywords, service_description, posts_per_keyword, relevance_th
                 relevant_posts_found = 0
                 posts_analyzed = 0
                 
-                print(f"🔍 Searching Reddit for keyword: {keyword}")
-                
                 # Search Reddit for this keyword
                 for submission in reddit.subreddit("all").search(keyword, sort="relevance", limit=min(posts_per_keyword * 2, 10)):
                     if relevant_posts_found >= posts_per_keyword:
                         break
                     
                     posts_analyzed += 1
-                    print(f"  📝 Analyzing post {posts_analyzed}: {submission.title[:50]}...")
                     
                     # Skip posts that are too old or have very low engagement
                     if submission.score < 1 and submission.num_comments < 1:
@@ -219,36 +211,58 @@ def search_reddit(keywords, service_description, posts_per_keyword, relevance_th
                         results.append(result_data)
                         relevant_posts_found += 1
                         search_progress['message'] = f"✅ Found {relevant_posts_found} relevant posts for '{keyword}'"
-                        print(f"    ✅ Added post: {submission.title[:50]}...")
                     
                     # Add a small delay to avoid rate limiting
                     time.sleep(1)
-                
-                print(f"📊 Keyword '{keyword}': Analyzed {posts_analyzed} posts, found {relevant_posts_found} relevant")
                     
             except Exception as e:
-                print(f"❌ Error while searching for '{keyword}': {e}")
+                print(f"⚠️ Error while searching for '{keyword}': {e}")
                 continue
         
         search_progress['results'] = results
         search_progress['is_running'] = False
         search_progress['message'] = f"🎉 Search completed! Found {len(results)} relevant posts."
-        print(f"🎉 Final results: {len(results)} posts found")
         return results
         
     except Exception as e:
         search_progress['error'] = str(e)
         search_progress['is_running'] = False
-        print(f"💥 Search failed with error: {e}")
+        print(f"⚠️ Search failed with error: {e}")
         return None
 
 @app.route('/')
 def index():
-    return render_template('index.html')
+    try:
+        return render_template('index.html')
+    except Exception as e:
+        return f"""
+        <html>
+            <body>
+                <h1>🚀 Reddit Marketing Tool</h1>
+                <p>App is starting up... If you see this, check if templates folder exists.</p>
+                <p>Error: {str(e)}</p>
+                <a href="/health">Check Health</a>
+            </body>
+        </html>
+        """
+
+@app.route('/health')
+def health():
+    return jsonify({
+        "status": "healthy",
+        "reddit_configured": reddit is not None,
+        "gemini_configured": gemini_configured,
+        "templates_exists": os.path.exists('templates'),
+        "static_exists": os.path.exists('static')
+    })
 
 @app.route('/upload', methods=['POST'])
 def upload_file():
     global search_progress, search_config
+    
+    if reddit is None:
+        flash('Reddit API not configured. Please check environment variables.', 'error')
+        return redirect(url_for('index'))
     
     if 'file' not in request.files:
         flash('No file selected', 'error')
@@ -264,9 +278,8 @@ def upload_file():
         flash('Please upload an Excel file (.xlsx or .xls)', 'error')
         return redirect(url_for('index'))
     
-    # Get service description and posts per keyword from form
     service_description = request.form.get('service_description', '').strip()
-    posts_per_keyword = request.form.get('posts_per_keyword', '5')  # Reduced for testing
+    posts_per_keyword = request.form.get('posts_per_keyword', '5')
     
     if not service_description:
         flash('Please enter a service description', 'error')
@@ -274,14 +287,13 @@ def upload_file():
     
     try:
         posts_per_keyword = int(posts_per_keyword)
-        if posts_per_keyword < 1 or posts_per_keyword > 10:  # Reduced max for testing
+        if posts_per_keyword < 1 or posts_per_keyword > 10:
             flash('Posts per keyword must be between 1 and 10', 'error')
             return redirect(url_for('index'))
     except ValueError:
         flash('Please enter a valid number for posts per keyword', 'error')
         return redirect(url_for('index'))
     
-    # Update search configuration
     search_config['service_description'] = service_description
     search_config['posts_per_keyword'] = posts_per_keyword
     
@@ -296,8 +308,6 @@ def upload_file():
         if not keywords:
             flash("No keywords found in the Excel file", 'error')
             return redirect(url_for('index'))
-        
-        print(f"🔑 Keywords to search: {keywords}")
         
         # Reset progress
         search_progress = {
@@ -358,7 +368,6 @@ def download_results():
         flash('No results available to download', 'error')
         return redirect(url_for('index'))
     
-    # Create Excel file in memory
     output = BytesIO()
     df = pd.DataFrame(search_progress['results'])
     
@@ -388,5 +397,4 @@ def reset():
     }
     return redirect(url_for('index'))
 
-if __name__ == '__main__':
-    app.run(debug=False, host='0.0.0.0', port=5000)
+# Keep your HTML files exactly the same - they're perfect!
