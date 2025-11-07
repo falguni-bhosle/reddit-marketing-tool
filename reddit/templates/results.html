@@ -1,0 +1,253 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Marketing Opportunities - Reddit Keyword Search</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+</head>
+<body>
+    <div class="container">
+        <header>
+            <h1>🎯 Marketing Opportunities Found</h1>
+            <p>AI-analyzed Reddit posts suitable for your service marketing</p>
+            <p class="subtitle">Total {{ total_results }} relevant posts found</p>
+        </header>
+
+        <div class="action-buttons">
+            <a href="{{ url_for('download_results') }}" class="btn btn-primary">📊 Download Excel Report</a>
+            <a href="{{ url_for('reset') }}" class="btn btn-outline">🔄 New Search</a>
+            <a href="{{ url_for('index') }}" class="btn btn-secondary">🏠 Back to Home</a>
+        </div>
+
+        <!-- Custom Dropdown Filter Section -->
+        <div class="filter-container-center">
+            <div class="filter-buttons-center">
+                <button class="btn btn-success" onclick="showAllKeywords()">Show All Keywords</button>
+                <button class="btn btn-outline" onclick="showHighConfidence()">High Confidence Only</button>
+                <button class="btn btn-secondary" onclick="clearSelection()">Clear Selection</button>
+            </div>
+            
+            <div class="custom-dropdown-wrapper">
+                <div class="dropdown-input-container">
+                    <input type="text" 
+                           id="keywordSearch" 
+                           class="keyword-search-input" 
+                           placeholder="🔍 Click here to filter by keywords..." 
+                           readonly
+                           onclick="toggleDropdown()">
+                    <span class="dropdown-arrow" onclick="toggleDropdown()">▼</span>
+                </div>
+                
+                <div class="custom-dropdown-menu" id="keywordDropdown">
+                    <div class="dropdown-header">
+                        <span>Select Keywords</span>
+                        <button type="button" class="close-dropdown" onclick="closeDropdown()">×</button>
+                    </div>
+                    <div class="dropdown-options">
+                        {% set unique_keywords = [] %}
+                        {% for result in results %}
+                            {% if result.Keyword not in unique_keywords %}
+                                {% set _ = unique_keywords.append(result.Keyword) %}
+                                <label class="keyword-option">
+                                    <input type="checkbox" value="{{ result.Keyword }}" checked onchange="updateFilter()">
+                                    <span class="checkmark"></span>
+                                    {{ result.Keyword }}
+                                </label>
+                            {% endif %}
+                        {% endfor %}
+                    </div>
+                    <div class="dropdown-actions">
+                        <button type="button" class="btn btn-small" onclick="selectAllKeywords()">Select All</button>
+                        <button type="button" class="btn btn-small btn-outline" onclick="deselectAllKeywords()">Deselect All</button>
+                    </div>
+                </div>
+            </div>
+            
+            <div class="filter-info">
+                <small>Showing <span id="visibleCount">{{ total_results }}</span> of {{ total_results }} posts | 
+                <span id="selectedCount">{{ unique_keywords|length }}</span> keywords selected</small>
+            </div>
+        </div>
+
+        <div class="results-container" id="resultsContainer">
+            {% for result in results %}
+            <div class="result-card marketing-friendly" data-keyword="{{ result.Keyword }}" data-confidence="{{ result.Confidence }}">
+                <div class="result-header">
+                    <h3>{{ result.Title }}</h3>
+                    <div class="score-container">
+                        <span class="score">👍 {{ result.Score }}</span>
+                        <span class="engagement-info">💬 {{ result.Comments }} comments</span>
+                        <span class="marketing-score high-marketing">
+                            Relevance: {{ result.Confidence }}
+                        </span>
+                    </div>
+                </div>
+                
+                <div class="result-details">
+                    <p><strong>🔑 Keyword:</strong> <span class="keyword-badge">{{ result.Keyword }}</span></p>
+                    <p><strong>🏷️ Subreddit:</strong> r/{{ result.Subreddit }}</p>
+                    <p><strong>📅 Posted:</strong> {{ result.Created_UTC }}</p>
+                    
+                    <div class="ai-insight">
+                        <strong>🤖 AI Analysis:</strong> {{ result.Reason }}
+                    </div>
+                    
+                    <div class="marketing-suggestion">
+                        <strong>💡 Marketing Suggestion:</strong> {{ result.Marketing_Suggestion }}
+                    </div>
+                    
+                    {% if result.Post_Content %}
+                    <div class="post-preview">
+                        <strong>📝 Post Preview:</strong> 
+                        <p>{{ result.Post_Content }}</p>
+                    </div>
+                    {% endif %}
+                </div>
+                
+                <div class="result-actions">
+                    <a href="{{ result.URL }}" target="_blank" class="btn btn-success">💬 Engage on Reddit</a>
+                    <span class="post-age">Great opportunity for marketing!</span>
+                </div>
+            </div>
+            {% endfor %}
+        </div>
+
+        {% if not results %}
+        <div class="no-results">
+            <h3>No marketing opportunities found</h3>
+            <p>Try adjusting your service description or keywords to find more relevant posts.</p>
+        </div>
+        {% endif %}
+
+        <div class="action-buttons">
+            <a href="{{ url_for('download_results') }}" class="btn btn-primary">📊 Download Excel Report</a>
+            <a href="{{ url_for('reset') }}" class="btn btn-outline">🔄 New Search</a>
+        </div>
+    </div>
+
+    <script>
+        // Toggle dropdown visibility
+        function toggleDropdown() {
+            const dropdown = document.getElementById('keywordDropdown');
+            dropdown.classList.toggle('show');
+        }
+        
+        // Close dropdown
+        function closeDropdown() {
+            const dropdown = document.getElementById('keywordDropdown');
+            dropdown.classList.remove('show');
+        }
+        
+        // Update filter based on selected checkboxes
+        function updateFilter() {
+            const checkboxes = document.querySelectorAll('.keyword-option input[type="checkbox"]');
+            const selectedKeywords = Array.from(checkboxes)
+                .filter(checkbox => checkbox.checked)
+                .map(checkbox => checkbox.value);
+            
+            const resultCards = document.querySelectorAll('.result-card');
+            let visibleCount = 0;
+            
+            resultCards.forEach(card => {
+                const cardKeyword = card.getAttribute('data-keyword');
+                
+                if (selectedKeywords.length === 0 || selectedKeywords.includes(cardKeyword)) {
+                    card.style.display = 'block';
+                    visibleCount++;
+                } else {
+                    card.style.display = 'none';
+                }
+            });
+            
+            // Update input placeholder with selected keywords
+            const searchInput = document.getElementById('keywordSearch');
+            if (selectedKeywords.length === 0) {
+                searchInput.placeholder = '🔍 Click here to filter by keywords...';
+            } else if (selectedKeywords.length === 1) {
+                searchInput.placeholder = `🔍 ${selectedKeywords[0]}`;
+            } else {
+                searchInput.placeholder = `🔍 ${selectedKeywords.length} keywords selected`;
+            }
+            
+            document.getElementById('visibleCount').textContent = visibleCount;
+            document.getElementById('selectedCount').textContent = selectedKeywords.length;
+        }
+        
+        // Show all keywords
+        function showAllKeywords() {
+            const checkboxes = document.querySelectorAll('.keyword-option input[type="checkbox"]');
+            checkboxes.forEach(checkbox => checkbox.checked = true);
+            updateFilter();
+            closeDropdown();
+        }
+        
+        // Clear selection
+        function clearSelection() {
+            const checkboxes = document.querySelectorAll('.keyword-option input[type="checkbox"]');
+            checkboxes.forEach(checkbox => checkbox.checked = false);
+            updateFilter();
+            closeDropdown();
+        }
+        
+        // Select all keywords
+        function selectAllKeywords() {
+            const checkboxes = document.querySelectorAll('.keyword-option input[type="checkbox"]');
+            checkboxes.forEach(checkbox => checkbox.checked = true);
+            updateFilter();
+        }
+        
+        // Deselect all keywords
+        function deselectAllKeywords() {
+            const checkboxes = document.querySelectorAll('.keyword-option input[type="checkbox"]');
+            checkboxes.forEach(checkbox => checkbox.checked = false);
+            updateFilter();
+        }
+        
+        // Show only high confidence posts
+        function showHighConfidence() {
+            const resultCards = document.querySelectorAll('.result-card');
+            let visibleCount = 0;
+            const highConfidenceKeywords = new Set();
+            
+            resultCards.forEach(card => {
+                const confidence = parseFloat(card.getAttribute('data-confidence'));
+                
+                if (confidence > 0.7) {
+                    card.style.display = 'block';
+                    visibleCount++;
+                    highConfidenceKeywords.add(card.getAttribute('data-keyword'));
+                } else {
+                    card.style.display = 'none';
+                }
+            });
+            
+            // Update checkboxes to match high confidence keywords
+            const checkboxes = document.querySelectorAll('.keyword-option input[type="checkbox"]');
+            checkboxes.forEach(checkbox => {
+                checkbox.checked = highConfidenceKeywords.has(checkbox.value);
+            });
+            
+            document.getElementById('visibleCount').textContent = visibleCount;
+            document.getElementById('selectedCount').textContent = highConfidenceKeywords.size;
+            updateFilter();
+            closeDropdown();
+        }
+        
+        // Close dropdown when clicking outside
+        document.addEventListener('click', function(event) {
+            const dropdown = document.getElementById('keywordDropdown');
+            const inputContainer = document.querySelector('.dropdown-input-container');
+            
+            if (!inputContainer.contains(event.target) && !dropdown.contains(event.target)) {
+                closeDropdown();
+            }
+        });
+        
+        // Initialize
+        document.addEventListener('DOMContentLoaded', function() {
+            updateFilter();
+        });
+    </script>
+</body>
+</html>
