@@ -1,12 +1,77 @@
-from flask import Flask, render_template, request, send_file, flash, redirect, url_for, jsonify
-import pandas as pd
-import praw
-from datetime import datetime
+import sys
 import os
-import threading
-from io import BytesIO
-import google.generativeai as genai
-import time
+import traceback
+
+print("🐍 Python version:", sys.version)
+print("📁 Current directory:", os.getcwd())
+print("📁 Files in directory:", os.listdir('.'))
+
+# Test all imports with error handling
+try:
+    from flask import Flask, render_template, request, send_file, flash, redirect, url_for, jsonify
+    print("✅ Flask imported successfully")
+except ImportError as e:
+    print(f"❌ Flask import failed: {e}")
+    traceback.print_exc()
+    sys.exit(1)
+
+try:
+    import pandas as pd
+    print("✅ Pandas imported successfully")
+except ImportError as e:
+    print(f"❌ Pandas import failed: {e}")
+    traceback.print_exc()
+    sys.exit(1)
+
+try:
+    import praw
+    print("✅ PRAW imported successfully")
+except ImportError as e:
+    print(f"❌ PRAW import failed: {e}")
+    traceback.print_exc()
+    sys.exit(1)
+
+try:
+    from datetime import datetime
+    print("✅ Datetime imported successfully")
+except ImportError as e:
+    print(f"❌ Datetime import failed: {e}")
+    traceback.print_exc()
+    sys.exit(1)
+
+try:
+    import threading
+    print("✅ Threading imported successfully")
+except ImportError as e:
+    print(f"❌ Threading import failed: {e}")
+    traceback.print_exc()
+    sys.exit(1)
+
+try:
+    from io import BytesIO
+    print("✅ BytesIO imported successfully")
+except ImportError as e:
+    print(f"❌ BytesIO import failed: {e}")
+    traceback.print_exc()
+    sys.exit(1)
+
+try:
+    import google.generativeai as genai
+    print("✅ Google Generative AI imported successfully")
+except ImportError as e:
+    print(f"❌ Google Generative AI import failed: {e}")
+    traceback.print_exc()
+    sys.exit(1)
+
+try:
+    import time
+    print("✅ Time imported successfully")
+except ImportError as e:
+    print(f"❌ Time import failed: {e}")
+    traceback.print_exc()
+    sys.exit(1)
+
+print("🚀 ALL IMPORTS SUCCESSFUL! Starting Flask app...")
 
 app = Flask(__name__)
 app.secret_key = os.environ.get('FLASK_SECRET_KEY', 'fallback-secret-key')
@@ -17,17 +82,15 @@ REDDIT_SECRET = os.environ.get('REDDIT_SECRET')
 REDDIT_USER_AGENT = os.environ.get('REDDIT_USER_AGENT', 'RedditKeywordSearchBot/1.0')
 GEMINI_API_KEY = os.environ.get('GEMINI_API_KEY')
 
-print("🚀 Starting Flask app on Vercel...")
-print("📁 Current directory:", os.getcwd())
-print("📁 Files in directory:", os.listdir('.'))
-print("📁 Templates exists:", os.path.exists('templates'))
-print("📁 Static exists:", os.path.exists('static'))
+print("🔧 Environment check:")
+print(f"Reddit Client ID: {'✅ Set' if REDDIT_CLIENT_ID else '❌ Missing'}")
+print(f"Reddit Secret: {'✅ Set' if REDDIT_SECRET else '❌ Missing'}")
+print(f"Gemini API Key: {'✅ Set' if GEMINI_API_KEY else '❌ Missing'}")
 
-# Initialize variables
+# Initialize variables with error handling
 reddit = None
 gemini_configured = False
 
-# Don't validate environment variables on startup - let it fail gracefully
 try:
     if GEMINI_API_KEY:
         genai.configure(api_key=GEMINI_API_KEY)
@@ -36,7 +99,7 @@ try:
     else:
         print("⚠️ Gemini API Key not set")
 except Exception as e:
-    print(f"⚠️ Gemini configuration failed: {e}")
+    print(f"❌ Gemini configuration failed: {e}")
 
 try:
     if REDDIT_CLIENT_ID and REDDIT_SECRET:
@@ -45,11 +108,13 @@ try:
             client_secret=REDDIT_SECRET,
             user_agent=REDDIT_USER_AGENT
         )
+        # Test connection
+        test_subreddit = reddit.subreddit("all")
         print("✅ Reddit authentication successful")
     else:
         print("⚠️ Reddit credentials not set")
 except Exception as e:
-    print(f"⚠️ Reddit authentication failed: {e}")
+    print(f"❌ Reddit authentication failed: {e}")
 
 # Global variable to store search progress and configuration
 search_config = {
@@ -230,6 +295,8 @@ def search_reddit(keywords, service_description, posts_per_keyword, relevance_th
         print(f"⚠️ Search failed with error: {e}")
         return None
 
+# ========== ROUTES WITH ERROR HANDLING ==========
+
 @app.route('/')
 def index():
     try:
@@ -237,23 +304,38 @@ def index():
     except Exception as e:
         return f"""
         <html>
-            <body>
+            <body style="font-family: Arial, sans-serif; padding: 40px; max-width: 800px; margin: 0 auto;">
                 <h1>🚀 Reddit Marketing Tool</h1>
-                <p>App is starting up... If you see this, check if templates folder exists.</p>
-                <p>Error: {str(e)}</p>
-                <a href="/health">Check Health</a>
+                <div style="background: #f8f9fa; padding: 20px; border-radius: 10px; border-left: 4px solid #007bff;">
+                    <h3>App is running, but template issue detected</h3>
+                    <p><strong>Error:</strong> {str(e)}</p>
+                    <p><strong>Current directory:</strong> {os.getcwd()}</p>
+                    <p><strong>Templates folder exists:</strong> {os.path.exists('templates')}</p>
+                    <p><strong>Static folder exists:</strong> {os.path.exists('static')}</p>
+                    <p><strong>Files in templates:</strong> {os.listdir('templates') if os.path.exists('templates') else 'Folder missing'}</p>
+                </div>
+                <div style="margin-top: 20px;">
+                    <a href="/health" style="background: #007bff; color: white; padding: 10px 15px; text-decoration: none; border-radius: 5px; margin-right: 10px;">Check Health</a>
+                    <a href="/test" style="background: #28a745; color: white; padding: 10px 15px; text-decoration: none; border-radius: 5px;">Test Basic Route</a>
+                </div>
             </body>
         </html>
         """
+
+@app.route('/test')
+def test():
+    return "✅ Basic Flask route is working! Your app is running."
 
 @app.route('/health')
 def health():
     return jsonify({
         "status": "healthy",
+        "flask": "running",
         "reddit_configured": reddit is not None,
         "gemini_configured": gemini_configured,
         "templates_exists": os.path.exists('templates'),
-        "static_exists": os.path.exists('static')
+        "static_exists": os.path.exists('static'),
+        "files_in_directory": os.listdir('.')
     })
 
 @app.route('/upload', methods=['POST'])
@@ -335,7 +417,10 @@ def upload_file():
 
 @app.route('/progress')
 def progress():
-    return render_template('index.html', show_progress=True)
+    try:
+        return render_template('index.html', show_progress=True)
+    except Exception as e:
+        return f"Progress route error: {str(e)}"
 
 @app.route('/progress_data')
 def progress_data():
@@ -357,8 +442,11 @@ def show_results():
         flash('No results available. Please run a search first.', 'error')
         return redirect(url_for('index'))
     
-    results = search_progress['results']
-    return render_template('results.html', results=results, total_results=len(results))
+    try:
+        results = search_progress['results']
+        return render_template('results.html', results=results, total_results=len(results))
+    except Exception as e:
+        return f"Results template error: {str(e)}"
 
 @app.route('/download')
 def download_results():
@@ -368,21 +456,24 @@ def download_results():
         flash('No results available to download', 'error')
         return redirect(url_for('index'))
     
-    output = BytesIO()
-    df = pd.DataFrame(search_progress['results'])
-    
-    with pd.ExcelWriter(output, engine='openpyxl') as writer:
-        df.to_excel(writer, index=False, sheet_name='Reddit_Results')
-    
-    output.seek(0)
-    filename = f"reddit_marketing_results_{datetime.now().strftime('%Y%m%d_%H%M%S')}.xlsx"
-    
-    return send_file(
-        output,
-        download_name=filename,
-        as_attachment=True,
-        mimetype='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
-    )
+    try:
+        output = BytesIO()
+        df = pd.DataFrame(search_progress['results'])
+        
+        with pd.ExcelWriter(output, engine='openpyxl') as writer:
+            df.to_excel(writer, index=False, sheet_name='Reddit_Results')
+        
+        output.seek(0)
+        filename = f"reddit_marketing_results_{datetime.now().strftime('%Y%m%d_%H%M%S')}.xlsx"
+        
+        return send_file(
+            output,
+            download_name=filename,
+            as_attachment=True,
+            mimetype='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
+        )
+    except Exception as e:
+        return f"Download error: {str(e)}"
 
 @app.route('/reset')
 def reset():
@@ -397,4 +488,5 @@ def reset():
     }
     return redirect(url_for('index'))
 
-# Keep your HTML files exactly the same - they're perfect!
+if __name__ == '__main__':
+    app.run(debug=False, host='0.0.0.0', port=5000)
